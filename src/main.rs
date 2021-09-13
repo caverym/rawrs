@@ -1,6 +1,6 @@
-use rand::{Rng, thread_rng};
-use std::str::FromStr;
 use rand::rngs::ThreadRng;
+use rand::{thread_rng, Rng};
+use std::str::FromStr;
 
 type Word = String;
 type Words = Vec<Word>;
@@ -108,12 +108,10 @@ impl Generator {
     fn cvc(&self, rng: &mut ThreadRng) -> Syllable {
         if rng.gen() {
             format!("{}{}", self.cv(rng), self.c(rng))
+        } else if rng.gen() && self.consonants.contains(&'m') && self.consonants.contains(&'n') {
+            format!("{}{}", self.cv(rng), self.n(rng))
         } else {
-            if rng.gen() && self.consonants.contains(&'m')  && self.consonants.contains(&'n') {
-                format!("{}{}", self.cv(rng), self.n(rng))
-            } else {
-                self.cv(rng)
-            }
+            self.cv(rng)
         }
     }
 
@@ -136,24 +134,20 @@ impl Generator {
     fn vcc(&self, rng: &mut ThreadRng) -> Syllable {
         if rng.gen() {
             format!("{}{}", self.vc(rng), self.c(rng))
+        } else if rng.gen() && self.consonants.contains(&'m') && self.consonants.contains(&'n') {
+            format!("{}{}", self.vc(rng), self.n(rng))
         } else {
-            if rng.gen() && self.consonants.contains(&'m')  && self.consonants.contains(&'n') {
-                format!("{}{}", self.vc(rng), self.n(rng))
-            } else {
-                self.vc(rng)
-            }
+            self.vc(rng)
         }
     }
 
     fn vvc(&self, rng: &mut ThreadRng) -> Syllable {
         if rng.gen() {
             format!("{}{}", self.v(rng), self.vc(rng))
+        } else if rng.gen() && self.consonants.contains(&'m') && self.consonants.contains(&'n') {
+            format!("{}{}{}", self.v(rng), self.v(rng), self.n(rng))
         } else {
-            if rng.gen() && self.consonants.contains(&'m')  && self.consonants.contains(&'n') {
-                format!("{}{}{}", self.v(rng), self.v(rng), self.n(rng))
-            } else {
-                self.vc(rng)
-            }
+            self.vc(rng)
         }
     }
 
@@ -221,7 +215,8 @@ fn help() {
 \t-o, --order\t\tSelect syllable order
 \t-s, --syllables\t\tNumber of syllables for each word
 \t-v, --vowels\t\tList of vowels to use
-\t-V, --version\t\tView version information\n");
+\t-V, --version\t\tView version information\n"
+    );
 }
 
 fn version() {
