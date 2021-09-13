@@ -182,9 +182,9 @@ fn main() -> Result<(), Error> {
     let mut j: Jargon = Jargon::from_env();
 
     if j.contains(["-h", "--help"]) {
-        todo!("help");
-    } else if j.contains(["-v", "--version"]) {
-        todo!("version");
+        help();
+    } else if j.contains(["-V", "--version"]) {
+        version();
     } else {
         let gen: Generator = Generator {
             consonants: j.result_arg(["-c", "--consonants"])?.chars().collect(),
@@ -211,3 +211,19 @@ fn main() -> Result<(), Error> {
 }
 
 type Error = Box<dyn std::error::Error>;
+
+fn help() {
+    print!(
+        "Rawrs - Random Annoying Words
+
+\t-c, --consonants\tList of consonants to use
+\t-h, --help\t\tView this help
+\t-o, --order\t\tSelect syllable order
+\t-s, --syllables\t\tNumber of syllables for each word
+\t-v, --vowels\t\tList of vowels to use
+\t-V, --version\t\tView version information\n");
+}
+
+fn version() {
+    println!("Rawrs version {}", env!("CARGO_PKG_VERSION"));
+}
