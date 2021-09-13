@@ -87,7 +87,7 @@ impl Generator {
     }
 
     fn vc(&self, rng: &mut ThreadRng) -> Syllable {
-        if rng.gen() && self.consonants.contains(&'m') && self.consonants.contains(&'n') {
+        if rng.gen() && (self.consonants.contains(&'m') | self.consonants.contains(&'n')) {
             format!("{}{}", self.v(rng), self.n(rng))
         } else {
             format!("{}{}", self.v(rng), self.c(rng))
@@ -109,7 +109,7 @@ impl Generator {
     fn cvc(&self, rng: &mut ThreadRng) -> Syllable {
         if rng.gen() {
             format!("{}{}", self.cv(rng), self.c(rng))
-        } else if rng.gen() && self.consonants.contains(&'m') && self.consonants.contains(&'n') {
+        } else if rng.gen() && (self.consonants.contains(&'m') | self.consonants.contains(&'n')) {
             format!("{}{}", self.cv(rng), self.n(rng))
         } else {
             self.cv(rng)
@@ -135,7 +135,7 @@ impl Generator {
     fn vcc(&self, rng: &mut ThreadRng) -> Syllable {
         if rng.gen() {
             format!("{}{}", self.vc(rng), self.c(rng))
-        } else if rng.gen() && self.consonants.contains(&'m') && self.consonants.contains(&'n') {
+        } else if rng.gen() && (self.consonants.contains(&'m') | self.consonants.contains(&'n')) {
             format!("{}{}", self.vc(rng), self.n(rng))
         } else {
             self.vc(rng)
@@ -145,7 +145,7 @@ impl Generator {
     fn vvc(&self, rng: &mut ThreadRng) -> Syllable {
         if rng.gen() {
             format!("{}{}", self.v(rng), self.vc(rng))
-        } else if rng.gen() && self.consonants.contains(&'m') && self.consonants.contains(&'n') {
+        } else if rng.gen() && (self.consonants.contains(&'m') | self.consonants.contains(&'n')) {
             format!("{}{}{}", self.v(rng), self.v(rng), self.n(rng))
         } else {
             self.vc(rng)
@@ -163,10 +163,19 @@ impl Generator {
     }
 
     fn n(&self, rng: &mut ThreadRng) -> Consonant {
-        if rng.gen() {
-            'm'
-        } else {
+        let cm: bool = self.consonants.contains(&'m');
+        let cn: bool = self.consonants.contains(&'n');
+
+        if cm && cn {
+            if rng.gen() {
+                'm'
+            } else {
+                'n'
+            }
+        } else if cn {
             'n'
+        } else {
+            'm'
         }
     }
 }
