@@ -58,7 +58,8 @@ struct Generator {
 }
 
 impl Generator {
-    pub fn generate(&self, rng: &mut ThreadRng) -> Words {
+    pub fn generate(&self) -> Words {
+        let mut rng: ThreadRng = thread_rng();
         let mut words: Words = Words::new();
 
         for _ in 0..self.count {
@@ -68,14 +69,14 @@ impl Generator {
                     "{}{}",
                     word,
                     match self.order {
-                        SyllableOrder::Vc => self.vc(rng),
-                        SyllableOrder::Cv => self.cv(rng),
-                        SyllableOrder::Cvv => self.cvv(rng),
-                        SyllableOrder::Cvc => self.cvc(rng),
-                        SyllableOrder::Ccv => self.ccv(rng),
-                        SyllableOrder::Vcv => self.vcv(rng),
-                        SyllableOrder::Vcc => self.vcc(rng),
-                        SyllableOrder::Vvc => self.vvc(rng),
+                        SyllableOrder::Vc => self.vc(&mut rng),
+                        SyllableOrder::Cv => self.cv(&mut rng),
+                        SyllableOrder::Cvv => self.cvv(&mut rng),
+                        SyllableOrder::Cvc => self.cvc(&mut rng),
+                        SyllableOrder::Ccv => self.ccv(&mut rng),
+                        SyllableOrder::Vcv => self.vcv(&mut rng),
+                        SyllableOrder::Vcc => self.vcc(&mut rng),
+                        SyllableOrder::Vvc => self.vvc(&mut rng),
                     }
                 )
             }
@@ -172,7 +173,6 @@ impl Generator {
 
 fn main() -> Result<(), Error> {
     use jargon_args::Jargon;
-    let mut rng: ThreadRng = thread_rng();
     let mut j: Jargon = Jargon::from_env();
 
     if j.contains(["-h", "--help"]) {
@@ -180,6 +180,7 @@ fn main() -> Result<(), Error> {
     } else if j.contains(["-V", "--version"]) {
         version();
     } else {
+        let moment = std::time::Instant::now();
         let gen: Generator = Generator {
             consonants: j.result_arg(["-c", "--consonants"])?.chars().collect(),
             vowels: j.result_arg(["-v", "--vowels"])?.chars().collect(),
@@ -194,11 +195,13 @@ fn main() -> Result<(), Error> {
                 .parse()?,
         };
 
-        let words: Words = gen.generate(&mut rng);
+        let words: Words = gen.generate();
 
-        for word in words.iter() {
+        for word in words {
             println!("{}", word);
         }
+
+        eprintln!("took {} millisecond(s)", moment.elapsed().as_millis());
     }
 
     Ok(())
