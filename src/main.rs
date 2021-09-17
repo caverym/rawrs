@@ -25,6 +25,114 @@ enum SyllableOrder {
     Vvc,
 }
 
+impl SyllableOrder {
+    pub fn generate(&self, rng: &mut ThreadRng, cs: &[Consonant], vs: &[Vowel]) -> Syllable {
+        match self {
+            SyllableOrder::Vc => self.vc(rng, cs, vs),
+            SyllableOrder::Cv => self.cv(rng, cs, vs),
+            SyllableOrder::Cvv => self.cvv(rng, cs, vs),
+            SyllableOrder::Cvc => self.cvc(rng, cs, vs),
+            SyllableOrder::Ccv => self.ccv(rng, cs, vs),
+            SyllableOrder::Vcv => self.vcv(rng, cs, vs),
+            SyllableOrder::Vcc => self.vcc(rng, cs, vs),
+            SyllableOrder::Vvc => self.vvc(rng, cs, vs),
+        }
+    }
+
+    fn vc(&self, rng: &mut ThreadRng, cs: &[Consonant], vs: &[Vowel]) -> Syllable {
+        if rng.gen() && (cs.contains(&'m') | cs.contains(&'n')) {
+            format!("{}{}", self.v(rng, vs), self.n(rng, cs))
+        } else {
+            format!("{}{}", self.v(rng, vs), self.c(rng, cs))
+        }
+    }
+
+    fn cv(&self, rng: &mut ThreadRng, cs: &[Consonant], vs: &[Vowel]) -> Syllable {
+        format!("{}{}", self.c(rng, cs), self.v(rng, vs))
+    }
+
+    fn cvv(&self, rng: &mut ThreadRng, cs: &[Consonant], vs: &[Vowel]) -> Syllable {
+        if rng.gen() {
+            format!("{}{}", self.cv(rng, cs, vs), self.v(rng, vs))
+        } else {
+            self.cv(rng, cs, vs)
+        }
+    }
+
+    fn cvc(&self, rng: &mut ThreadRng, cs: &[Consonant], vs: &[Vowel]) -> Syllable {
+        if rng.gen() {
+            format!("{}{}", self.cv(rng, cs, vs), self.c(rng, cs))
+        } else if rng.gen() && (cs.contains(&'m') | cs.contains(&'n')) {
+            format!("{}{}", self.cv(rng, cs, vs), self.n(rng, cs))
+        } else {
+            self.cv(rng, cs, vs)
+        }
+    }
+
+    fn ccv(&self, rng: &mut ThreadRng, cs: &[Consonant], vs: &[Vowel]) -> Syllable {
+        if rng.gen() {
+            format!("{}{}", self.c(rng, cs), self.cv(rng, cs, vs))
+        } else {
+            self.cv(rng, cs, vs)
+        }
+    }
+
+    fn vcv(&self, rng: &mut ThreadRng, cs: &[Consonant], vs: &[Vowel]) -> Syllable {
+        if rng.gen() {
+            format!("{}{}", self.vc(rng, cs, vs), self.v(rng, vs))
+        } else {
+            self.vc(rng, cs, vs)
+        }
+    }
+
+    fn vcc(&self, rng: &mut ThreadRng, cs: &[Consonant], vs: &[Vowel]) -> Syllable {
+        if rng.gen() {
+            format!("{}{}", self.vc(rng, cs, vs), self.c(rng, cs))
+        } else if rng.gen() && (cs.contains(&'m') | cs.contains(&'n')) {
+            format!("{}{}", self.vc(rng, cs, vs), self.n(rng, vs))
+        } else {
+            self.vc(rng, cs, vs)
+        }
+    }
+
+    fn vvc(&self, rng: &mut ThreadRng, cs: &[Consonant], vs: &[Vowel]) -> Syllable {
+        if rng.gen() {
+            format!("{}{}", self.v(rng, vs), self.vc(rng, cs, vs))
+        } else if rng.gen() && (cs.contains(&'m') | cs.contains(&'n')) {
+            format!("{}{}{}", self.v(rng, vs), self.v(rng, vs), self.n(rng, cs))
+        } else {
+            self.vc(rng, cs, vs)
+        }
+    }
+
+    fn c(&self, rng: &mut ThreadRng, cs: &[Consonant]) -> Consonant {
+        let idx: usize = rng.gen_range(0..cs.len());
+        cs[idx]
+    }
+
+    fn v(&self, rng: &mut ThreadRng, vs: &[Vowel]) -> Vowel {
+        let idx: usize = rng.gen_range(0..vs.len());
+        vs[idx]
+    }
+
+    fn n(&self, rng: &mut ThreadRng, cs: &[Consonant]) -> Consonant {
+        let cm: bool = cs.contains(&'m');
+        let cn: bool = cs.contains(&'n');
+
+        if cm && cn {
+            if rng.gen() {
+                'm'
+            } else {
+                'n'
+            }
+        } else if cn {
+            'n'
+        } else {
+            'm'
+        }
+    }
+}
+
 impl FromStr for SyllableOrder {
     type Err = Error;
 
@@ -65,118 +173,12 @@ impl Generator {
         for _ in 0..self.count {
             let mut word: Word = Word::new();
             for _ in 0..self.syllables {
-                word = format!(
-                    "{}{}",
-                    word,
-                    match self.order {
-                        SyllableOrder::Vc => self.vc(&mut rng),
-                        SyllableOrder::Cv => self.cv(&mut rng),
-                        SyllableOrder::Cvv => self.cvv(&mut rng),
-                        SyllableOrder::Cvc => self.cvc(&mut rng),
-                        SyllableOrder::Ccv => self.ccv(&mut rng),
-                        SyllableOrder::Vcv => self.vcv(&mut rng),
-                        SyllableOrder::Vcc => self.vcc(&mut rng),
-                        SyllableOrder::Vvc => self.vvc(&mut rng),
-                    }
-                )
+                word = format!("{}{}", word, self.order.generate(&mut rng, &self.consonants, &self.vowels));
             }
             words.append(&mut vec![word])
         }
 
         words
-    }
-
-    fn vc(&self, rng: &mut ThreadRng) -> Syllable {
-        if rng.gen() && (self.consonants.contains(&'m') | self.consonants.contains(&'n')) {
-            format!("{}{}", self.v(rng), self.n(rng))
-        } else {
-            format!("{}{}", self.v(rng), self.c(rng))
-        }
-    }
-
-    fn cv(&self, rng: &mut ThreadRng) -> Syllable {
-        format!("{}{}", self.c(rng), self.v(rng))
-    }
-
-    fn cvv(&self, rng: &mut ThreadRng) -> Syllable {
-        if rng.gen() {
-            format!("{}{}", self.cv(rng), self.v(rng))
-        } else {
-            self.cv(rng)
-        }
-    }
-
-    fn cvc(&self, rng: &mut ThreadRng) -> Syllable {
-        if rng.gen() {
-            format!("{}{}", self.cv(rng), self.c(rng))
-        } else if rng.gen() && (self.consonants.contains(&'m') | self.consonants.contains(&'n')) {
-            format!("{}{}", self.cv(rng), self.n(rng))
-        } else {
-            self.cv(rng)
-        }
-    }
-
-    fn ccv(&self, rng: &mut ThreadRng) -> Syllable {
-        if rng.gen() {
-            format!("{}{}", self.c(rng), self.cv(rng))
-        } else {
-            self.cv(rng)
-        }
-    }
-
-    fn vcv(&self, rng: &mut ThreadRng) -> Syllable {
-        if rng.gen() {
-            format!("{}{}", self.vc(rng), self.v(rng))
-        } else {
-            self.vc(rng)
-        }
-    }
-
-    fn vcc(&self, rng: &mut ThreadRng) -> Syllable {
-        if rng.gen() {
-            format!("{}{}", self.vc(rng), self.c(rng))
-        } else if rng.gen() && (self.consonants.contains(&'m') | self.consonants.contains(&'n')) {
-            format!("{}{}", self.vc(rng), self.n(rng))
-        } else {
-            self.vc(rng)
-        }
-    }
-
-    fn vvc(&self, rng: &mut ThreadRng) -> Syllable {
-        if rng.gen() {
-            format!("{}{}", self.v(rng), self.vc(rng))
-        } else if rng.gen() && (self.consonants.contains(&'m') | self.consonants.contains(&'n')) {
-            format!("{}{}{}", self.v(rng), self.v(rng), self.n(rng))
-        } else {
-            self.vc(rng)
-        }
-    }
-
-    fn c(&self, rng: &mut ThreadRng) -> Consonant {
-        let idx: usize = rng.gen_range(0..self.consonants.len());
-        self.consonants[idx]
-    }
-
-    fn v(&self, rng: &mut ThreadRng) -> Vowel {
-        let idx: usize = rng.gen_range(0..self.vowels.len());
-        self.vowels[idx]
-    }
-
-    fn n(&self, rng: &mut ThreadRng) -> Consonant {
-        let cm: bool = self.consonants.contains(&'m');
-        let cn: bool = self.consonants.contains(&'n');
-
-        if cm && cn {
-            if rng.gen() {
-                'm'
-            } else {
-                'n'
-            }
-        } else if cn {
-            'n'
-        } else {
-            'm'
-        }
     }
 }
 
@@ -199,7 +201,7 @@ fn main() -> Result<(), Error> {
                 .unwrap_or_else(|| "2".to_string())
                 .parse()?,
             count: j
-                .option_arg(["-c", "--count"])
+                .option_arg(["-C", "--count"])
                 .unwrap_or_else(|| "4".to_string())
                 .parse()?,
         };
