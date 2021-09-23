@@ -3,7 +3,6 @@ use rand::{thread_rng, Rng};
 use std::str::FromStr;
 
 type Word = String;
-type Words = Vec<Word>;
 type Consonant = char;
 type Vowel = char;
 type Syllable = String;
@@ -166,19 +165,16 @@ struct Generator {
 }
 
 impl Generator {
-    pub fn generate(&self) -> Words {
+    pub fn generate(&self) {
         let mut rng: ThreadRng = thread_rng();
-        let mut words: Words = Words::new();
 
         for _ in 0..self.count {
             let mut word: Word = Word::new();
             for _ in 0..self.syllables {
                 word = format!("{}{}", word, self.order.generate(&mut rng, &self.consonants, &self.vowels));
             }
-            words.append(&mut vec![word])
+            println!("{}", word);
         }
-
-        words
     }
 }
 
@@ -206,11 +202,7 @@ fn main() -> Result<(), Error> {
                 .parse()?,
         };
 
-        let words: Words = gen.generate();
-
-        for word in words {
-            println!("{}", word);
-        }
+        gen.generate();
 
         eprintln!("took {} millisecond(s)", moment.elapsed().as_millis());
     }
