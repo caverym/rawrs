@@ -7,4 +7,4 @@ edition = "2018"
 
 [dependencies]
 rand = "*"
-jargon-args = "0.2.2"
+jargon-args = "0.2.5"

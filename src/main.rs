@@ -189,9 +189,9 @@ fn main() -> Result<(), Error> {
     } else {
         let moment = std::time::Instant::now();
         let gen: Generator = Generator {
-            consonants: j.result_arg(["-c", "--consonants"])?.chars().collect(),
-            vowels: j.result_arg(["-v", "--vowels"])?.chars().collect(),
-            order: j.result_arg(["-o", "--order"])?.parse()?,
+            consonants: j.result_arg::<String, [&str;2]>(["-c", "--consonants"])?.chars().collect(),
+            vowels: j.result_arg::<String, [&str;2]>(["-v", "--vowels"])?.chars().collect(),
+            order: j.result_arg::<SyllableOrder, [&str;2]>(["-o", "--order"])?,
             syllables: j
                 .option_arg(["-s", "--syllables"])
                 .unwrap_or_else(|| "2".to_string())

@@ -21,9 +21,9 @@ dependencies = [
 
 [[package]]
 name = "jargon-args"
-version = "0.2.2"
+version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3d9d40dbaa51b685deb9a35cb459d4e13172b0cf2799ac50b566a4cf8bf7330e"
+checksum = "e1e1a4272819cbb3e7d0290885b457d2f2df46dbc9c4f4511ef83797c7f688a7"
 
 [[package]]
 name = "libc"
