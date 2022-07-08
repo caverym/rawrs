@@ -1,5 +1,10 @@
+#![forbid(unsafe_code)]
+#![forbid(unstable_features)]
+#![forbid(missing_fragment_specifier)]
+#![warn(clippy::all, clippy::pedantic)]
 use rand::rngs::ThreadRng;
 use rand::{thread_rng, Rng};
+use std::io::Write;
 use std::str::FromStr;
 
 type Word = String;
@@ -12,123 +17,77 @@ struct Consonants(Vec<Consonant>);
 #[derive(Debug)]
 struct Vowels(Vec<Vowel>);
 
-#[derive(Debug)]
-enum SyllableOrder {
-    Vc,
-    Cv,
-    Cvv,
-    Cvc,
-    Ccv,
-    Vcv,
-    Vcc,
-    Vvc,
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
+struct SyllableOrder(Vec<SyllableLetter>);
+
+impl SyllableOrder {
+    pub fn insert(&mut self, index: usize, letter: SyllableLetter) {
+        self.0.insert(index, letter);
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SyllableLetter {
+    Consonant(u8),
+    Vowel(u8),
+}
+
+impl SyllableLetter {
+    pub fn is_consonant(self) -> bool {
+        match self {
+            SyllableLetter::Consonant(_) => true,
+            SyllableLetter::Vowel(_) => false,
+        }
+    }
+
+    pub fn probability(self) -> f64 {
+        match self {
+            SyllableLetter::Consonant(f) | SyllableLetter::Vowel(f) => f64::from(f) / 100.0,
+        }
+    }
+
+    pub fn change_probability(&mut self, p: u8) -> Self {
+        match self {
+            SyllableLetter::Consonant(f) | SyllableLetter::Vowel(f) => *f = p,
+        }
+        *self
+    }
 }
 
 impl SyllableOrder {
-    pub fn generate(&self, rng: &mut ThreadRng, cs: &[Consonant], vs: &[Vowel]) -> Syllable {
-        match self {
-            SyllableOrder::Vc => self.vc(rng, cs, vs),
-            SyllableOrder::Cv => self.cv(rng, cs, vs),
-            SyllableOrder::Cvv => self.cvv(rng, cs, vs),
-            SyllableOrder::Cvc => self.cvc(rng, cs, vs),
-            SyllableOrder::Ccv => self.ccv(rng, cs, vs),
-            SyllableOrder::Vcv => self.vcv(rng, cs, vs),
-            SyllableOrder::Vcc => self.vcc(rng, cs, vs),
-            SyllableOrder::Vvc => self.vvc(rng, cs, vs),
-        }
-    }
+    pub fn generate(
+        &self,
+        rng: &mut ThreadRng,
+        consonants: &[Consonant],
+        vowels: &[Vowel],
+    ) -> Syllable {
+        let mut syl = Syllable::new();
 
-    fn vc(&self, rng: &mut ThreadRng, cs: &[Consonant], vs: &[Vowel]) -> Syllable {
-        if rng.gen() && (cs.contains(&'m') | cs.contains(&'n')) {
-            format!("{}{}", self.v(rng, vs), self.n(rng, cs))
-        } else {
-            format!("{}{}", self.v(rng, vs), self.c(rng, cs))
-        }
-    }
-
-    fn cv(&self, rng: &mut ThreadRng, cs: &[Consonant], vs: &[Vowel]) -> Syllable {
-        format!("{}{}", self.c(rng, cs), self.v(rng, vs))
-    }
-
-    fn cvv(&self, rng: &mut ThreadRng, cs: &[Consonant], vs: &[Vowel]) -> Syllable {
-        if rng.gen() {
-            format!("{}{}", self.cv(rng, cs, vs), self.v(rng, vs))
-        } else {
-            self.cv(rng, cs, vs)
-        }
-    }
-
-    fn cvc(&self, rng: &mut ThreadRng, cs: &[Consonant], vs: &[Vowel]) -> Syllable {
-        if rng.gen() {
-            format!("{}{}", self.cv(rng, cs, vs), self.c(rng, cs))
-        } else if rng.gen() && (cs.contains(&'m') | cs.contains(&'n')) {
-            format!("{}{}", self.cv(rng, cs, vs), self.n(rng, cs))
-        } else {
-            self.cv(rng, cs, vs)
-        }
-    }
-
-    fn ccv(&self, rng: &mut ThreadRng, cs: &[Consonant], vs: &[Vowel]) -> Syllable {
-        if rng.gen() {
-            format!("{}{}", self.c(rng, cs), self.cv(rng, cs, vs))
-        } else {
-            self.cv(rng, cs, vs)
-        }
-    }
-
-    fn vcv(&self, rng: &mut ThreadRng, cs: &[Consonant], vs: &[Vowel]) -> Syllable {
-        if rng.gen() {
-            format!("{}{}", self.vc(rng, cs, vs), self.v(rng, vs))
-        } else {
-            self.vc(rng, cs, vs)
-        }
-    }
-
-    fn vcc(&self, rng: &mut ThreadRng, cs: &[Consonant], vs: &[Vowel]) -> Syllable {
-        if rng.gen() {
-            format!("{}{}", self.vc(rng, cs, vs), self.c(rng, cs))
-        } else if rng.gen() && (cs.contains(&'m') | cs.contains(&'n')) {
-            format!("{}{}", self.vc(rng, cs, vs), self.n(rng, vs))
-        } else {
-            self.vc(rng, cs, vs)
-        }
-    }
-
-    fn vvc(&self, rng: &mut ThreadRng, cs: &[Consonant], vs: &[Vowel]) -> Syllable {
-        if rng.gen() {
-            format!("{}{}", self.v(rng, vs), self.vc(rng, cs, vs))
-        } else if rng.gen() && (cs.contains(&'m') | cs.contains(&'n')) {
-            format!("{}{}{}", self.v(rng, vs), self.v(rng, vs), self.n(rng, cs))
-        } else {
-            self.vc(rng, cs, vs)
-        }
-    }
-
-    fn c(&self, rng: &mut ThreadRng, cs: &[Consonant]) -> Consonant {
-        let idx: usize = rng.gen_range(0..cs.len());
-        cs[idx]
-    }
-
-    fn v(&self, rng: &mut ThreadRng, vs: &[Vowel]) -> Vowel {
-        let idx: usize = rng.gen_range(0..vs.len());
-        vs[idx]
-    }
-
-    fn n(&self, rng: &mut ThreadRng, cs: &[Consonant]) -> Consonant {
-        let cm: bool = cs.contains(&'m');
-        let cn: bool = cs.contains(&'n');
-
-        if cm && cn {
-            if rng.gen() {
-                'm'
+        for letter in &self.0 {
+            let list = if letter.is_consonant() {
+                consonants
             } else {
-                'n'
-            }
-        } else if cn {
-            'n'
-        } else {
-            'm'
+                vowels
+            };
+
+            let p = letter.probability();
+
+            let c = if rng.gen_bool(p) {
+                let len = list.len();
+                let index = rng.gen_range(0..len);
+                list[index]
+            } else {
+                continue;
+            };
+
+            syl.insert(syl.len(), c);
         }
+
+        syl
     }
 }
 
@@ -136,23 +95,105 @@ impl FromStr for SyllableOrder {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(match s.to_ascii_uppercase().as_str() {
-            "VC" => Self::Vc,
-            "CV" => Self::Cv,
-            "CVV" => Self::Cvv,
-            "CVC" => Self::Cvc,
-            "CCV" => Self::Ccv,
-            "VCV" => Self::Vcv,
-            "VCC" => Self::Vcc,
-            "VVC" => Self::Vvc,
-            _ => {
-                return Err(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    "failed to parse syllable order",
-                )))
+        let mut order = SyllableOrder::default();
+        let chars: Vec<char> = s.chars().collect();
+        let len = chars.len();
+
+        let find_right = |chars: &[char], current: usize, find: char| -> Result<usize, Self::Err> {
+            for (i, c) in chars.iter().skip(current).enumerate() {
+                if *c == find {
+                    return Ok(current + i);
+                }
             }
-        })
+
+            Err("probability character has no end".into())
+        };
+
+        let mut prob = false;
+        let mut next = None;
+        for i in 0..len {
+            if let Some(n) = next {
+                if i < n {
+                    continue;
+                }
+                next = None;
+            }
+            let p = if prob { 50 } else { 100 };
+            let c = chars[i];
+            match c {
+                '(' => {
+                    let mut end = find_right(&chars, i, ')')?;
+                    next = Some(end);
+                    let aa = &s[i + 1..end];
+                    let comma = find_right(&aa.chars().collect::<Vec<char>>(), 0, ',').ok();
+                    let probability = if let Some(comma) = comma {
+                        end = comma;
+                        aa[comma + 1..].parse::<u8>()?
+                    } else {
+                        end = aa.len();
+                        50
+                    };
+                    let character =
+                        aa[0..end].parse::<SyllableOrder>()?.0[0].change_probability(probability);
+                    order.insert(order.len(), character);
+                }
+                ')' => {
+                    prob = false;
+                    continue;
+                }
+                'c' | 'C' => order.insert(order.len(), SyllableLetter::Consonant(p)),
+                'v' | 'V' => order.insert(order.len(), SyllableLetter::Vowel(p)),
+                _ => {}
+            }
+        }
+
+        Ok(order)
     }
+}
+
+#[test]
+fn so_parse_normal() {
+    let input = "cvc";
+    let so: SyllableOrder = input.parse().unwrap();
+
+    assert_eq!(
+        so,
+        SyllableOrder(vec![
+            SyllableLetter::Consonant(100),
+            SyllableLetter::Vowel(100),
+            SyllableLetter::Consonant(100)
+        ])
+    );
+}
+
+#[test]
+fn so_parse_normal_prob() {
+    let input = "cv(c)";
+    let so: SyllableOrder = input.parse().unwrap();
+
+    assert_eq!(
+        so,
+        SyllableOrder(vec![
+            SyllableLetter::Consonant(100),
+            SyllableLetter::Vowel(100),
+            SyllableLetter::Consonant(50)
+        ])
+    );
+}
+
+#[test]
+fn so_parse_set_prob() {
+    let input = "cv(c,25)";
+    let so: SyllableOrder = input.parse().unwrap();
+
+    assert_eq!(
+        so,
+        SyllableOrder(vec![
+            SyllableLetter::Consonant(100),
+            SyllableLetter::Vowel(100),
+            SyllableLetter::Consonant(25)
+        ])
+    );
 }
 
 #[derive(Debug)]
@@ -165,16 +206,29 @@ struct Generator {
 }
 
 impl Generator {
-    pub fn generate(&self) {
+    pub fn generate(&self) -> Vec<Word> {
+        let mut words: Vec<Word> = Vec::new();
         let mut rng: ThreadRng = thread_rng();
 
         for _ in 0..self.count {
             let mut word: Word = Word::new();
             for _ in 0..self.syllables {
-                word = format!("{}{}", word, self.order.generate(&mut rng, &self.consonants, &self.vowels));
+                word = format!(
+                    "{}{}",
+                    word,
+                    self.order
+                        .generate(&mut rng, &self.consonants, &self.vowels)
+                );
             }
-            println!("{}", word);
+
+            if !words.contains(&word) {
+                words.insert(words.len(), word);
+            }
+
+            words.sort();
         }
+
+        words
     }
 }
 
@@ -189,9 +243,15 @@ fn main() -> Result<(), Error> {
     } else {
         let moment = std::time::Instant::now();
         let gen: Generator = Generator {
-            consonants: j.result_arg::<String, [&str;2]>(["-c", "--consonants"])?.chars().collect(),
-            vowels: j.result_arg::<String, [&str;2]>(["-v", "--vowels"])?.chars().collect(),
-            order: j.result_arg::<SyllableOrder, [&str;2]>(["-o", "--order"])?,
+            consonants: j
+                .result_arg::<String, [&str; 2]>(["-c", "--consonants"])?
+                .chars()
+                .collect(),
+            vowels: j
+                .result_arg::<String, [&str; 2]>(["-v", "--vowels"])?
+                .chars()
+                .collect(),
+            order: j.result_arg::<SyllableOrder, [&str; 2]>(["-o", "--order"])?,
             syllables: j
                 .option_arg(["-s", "--syllables"])
                 .unwrap_or_else(|| "2".to_string())
@@ -202,7 +262,13 @@ fn main() -> Result<(), Error> {
                 .parse()?,
         };
 
-        gen.generate();
+        let words = gen.generate();
+
+        let mut oup = std::io::stdout();
+        for word in words {
+            oup.write_all(format!("{}\n", word).as_bytes())?;
+        }
+        oup.flush()?;
 
         eprintln!("took {} millisecond(s)", moment.elapsed().as_millis());
     }
