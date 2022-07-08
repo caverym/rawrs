@@ -58,7 +58,7 @@ impl SyllableGenerator {
         self.seed();
 
         if self.is_collapsed() {
-            eprintln!("syllable iteration:\n{}", self.extract());
+            // eprintln!("syllable iteration:\n{}", self.extract());
             return;
         }
 
@@ -74,7 +74,7 @@ impl SyllableGenerator {
         );
 
         self.index += 1;
-        eprintln!("syllable iteration:\n{}", self.extract());
+        // eprintln!("syllable iteration:\n{}", self.extract());
     }
 
     fn list(&self) -> Vec<char> {
@@ -131,11 +131,11 @@ impl SyllableGenerator {
 
         for s in &self.order.0 {
             if self.rng.gen_bool(s.probability()) {
-                syl.insert(syl.len(), LetterGenerator::new(*s, self.list()))
+                syl.insert(syl.len(), LetterGenerator::new(*s, self.list()));
             }
         }
 
-        self.syllable = syl
+        self.syllable = syl;
     }
 
     pub fn is_collapsed(&self) -> bool {
@@ -193,7 +193,7 @@ impl LetterGenerator {
                 SyllableLetter::Vowel(_) => vowels,
                 SyllableLetter::Nasal(_) => nasal,
             };
-            self.prune(proper_list)
+            self.prune(proper_list);
         }
     }
 
@@ -231,14 +231,6 @@ enum SyllableLetter {
 }
 
 impl SyllableLetter {
-    pub fn is_consonant(self) -> bool {
-        matches!(self, SyllableLetter::Consonant(_))
-    }
-
-    pub fn is_vowel(self) -> bool {
-        matches!(self, SyllableLetter::Vowel(_))
-    }
-
     pub fn probability(self) -> f64 {
         match self {
             SyllableLetter::Consonant(f) | SyllableLetter::Vowel(f) | SyllableLetter::Nasal(f) => {
@@ -250,7 +242,7 @@ impl SyllableLetter {
     pub fn change_probability(&mut self, p: u8) -> Self {
         match self {
             SyllableLetter::Consonant(f) | SyllableLetter::Vowel(f) | SyllableLetter::Nasal(f) => {
-                *f = p
+                *f = p;
             }
         }
         *self
