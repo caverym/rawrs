@@ -3,7 +3,7 @@
 #![forbid(missing_fragment_specifier)]
 #![warn(clippy::all, clippy::pedantic)]
 use rand::rngs::ThreadRng;
-use rand::{thread_rng, Rng};
+use rand::Rng;
 use std::io::Write;
 use std::str::FromStr;
 
@@ -17,8 +17,201 @@ struct Consonants(Vec<Consonant>);
 #[derive(Debug)]
 struct Vowels(Vec<Vowel>);
 
+#[derive(Debug)]
+struct SyllableGenerator {
+    order: SyllableOrder,
+    consonants: Vec<Consonant>,
+    vowels: Vec<Vowel>,
+    nasal: Vec<char>,
+    syllable: Vec<LetterGenerator>,
+    rng: ThreadRng,
+    seeded: bool,
+    index: usize,
+}
+
+impl SyllableGenerator {
+    pub fn new(
+        order: SyllableOrder,
+        consonants: Vec<Consonant>,
+        vowels: Vec<Vowel>,
+        nasal: Vec<char>,
+    ) -> SyllableGenerator {
+        let rng = rand::thread_rng();
+
+        Self {
+            order,
+            consonants,
+            vowels,
+            nasal,
+            syllable: Vec::new(),
+            rng,
+            seeded: false,
+            index: 0,
+        }
+    }
+
+    pub fn iterate(&mut self) {
+        if self.syllable.is_empty() {
+            self.create_syllable();
+        }
+
+        self.seed();
+
+        if self.is_collapsed() {
+            eprintln!("syllable iteration:\n{}", self.extract());
+            return;
+        }
+
+        if self.index == self.syllable.len() {
+            self.index = 0;
+        }
+
+        self.syllable[self.index].select(
+            &mut self.rng,
+            &self.consonants,
+            &self.vowels,
+            &self.nasal,
+        );
+
+        self.index += 1;
+        eprintln!("syllable iteration:\n{}", self.extract());
+    }
+
+    fn list(&self) -> Vec<char> {
+        let mut list = Vec::new();
+
+        list.append(&mut self.consonants.clone());
+        list.append(&mut self.vowels.clone());
+        list.append(&mut self.nasal.clone());
+
+        list
+    }
+
+    pub fn extract(&mut self) -> Syllable {
+        let mut chars: Vec<char> = Vec::new();
+
+        for letter in &self.syllable {
+            let mut letters = letter.get_letters();
+            chars.append(&mut letters);
+        }
+
+        chars.iter().collect()
+    }
+
+    fn seed(&mut self) {
+        if self.seeded {
+            return;
+        }
+
+        if let Some(start) = self.get_random_uncollapsed() {
+            self.syllable[start].select(&mut self.rng, &self.consonants, &self.vowels, &self.nasal);
+            self.seeded = true;
+        }
+    }
+
+    fn get_random_uncollapsed(&mut self) -> Option<usize> {
+        if self.is_collapsed() {
+            return None;
+        }
+
+        let len = self.syllable.len();
+        loop {
+            let index = self.rng.gen_range(0..len);
+
+            if self.syllable[index].is_collapsed() {
+                continue;
+            }
+
+            return Some(index);
+        }
+    }
+
+    fn create_syllable(&mut self) {
+        let mut syl: Vec<LetterGenerator> = Vec::new();
+
+        for s in &self.order.0 {
+            if self.rng.gen_bool(s.probability()) {
+                syl.insert(syl.len(), LetterGenerator::new(*s, self.list()))
+            }
+        }
+
+        self.syllable = syl
+    }
+
+    pub fn is_collapsed(&self) -> bool {
+        if self.seeded {
+            for letter in &self.syllable {
+                if !letter.is_collapsed() {
+                    return false;
+                }
+            }
+            return true;
+        }
+        false
+    }
+}
+
+#[derive(Debug)]
+struct LetterGenerator {
+    kind: SyllableLetter,
+    possible: Vec<char>,
+    pruned: bool,
+}
+
+impl LetterGenerator {
+    pub fn new(kind: SyllableLetter, list: Vec<char>) -> Self {
+        Self {
+            kind,
+            possible: list,
+            pruned: false,
+        }
+    }
+
+    fn prune(&mut self, list: &[char]) {
+        self.possible = self
+            .possible
+            .iter()
+            .filter_map(|c| if list.contains(c) { Some(*c) } else { None })
+            .collect();
+        self.pruned = true;
+    }
+
+    pub fn select(
+        &mut self,
+        rng: &mut ThreadRng,
+        consonants: &[Consonant],
+        vowels: &[Vowel],
+        nasal: &[char],
+    ) {
+        if self.pruned {
+            let index = rng.gen_range(0..=self.entropy());
+            let item = self.possible[index];
+            self.possible = vec![item];
+        } else {
+            let proper_list = match self.kind {
+                SyllableLetter::Consonant(_) => consonants,
+                SyllableLetter::Vowel(_) => vowels,
+                SyllableLetter::Nasal(_) => nasal,
+            };
+            self.prune(proper_list)
+        }
+    }
+
+    pub fn get_letters(&self) -> Vec<char> {
+        self.possible.clone()
+    }
+
+    pub fn entropy(&self) -> usize {
+        self.possible.len() - 1
+    }
+
+    pub fn is_collapsed(&self) -> bool {
+        self.entropy() == 0
+    }
+}
+
 #[derive(Default, Debug, Clone, PartialEq, Eq)]
-struct SyllableOrder(Vec<SyllableLetter>);
+struct SyllableOrder(pub Vec<SyllableLetter>);
 
 impl SyllableOrder {
     pub fn insert(&mut self, index: usize, letter: SyllableLetter) {
@@ -67,40 +260,54 @@ impl SyllableLetter {
 impl SyllableOrder {
     pub fn generate(
         &self,
-        rng: &mut ThreadRng,
+        // rng: &mut ThreadRng,
         consonants: &[Consonant],
         vowels: &[Vowel],
         nasal: &[char],
     ) -> Syllable {
-        let mut syl = Syllable::new();
+        // let mut syl = Syllable::new();
 
-        for letter in &self.0 {
-            let list = if letter.is_consonant() {
-                consonants
-            } else if letter.is_vowel() {
-                vowels
-            } else {
-                nasal
-            };
+        // for letter in &self.0 {
+        //     let list = if letter.is_consonant() {
+        //         consonants
+        //     } else if letter.is_vowel() {
+        //         vowels
+        //     } else {
+        //         nasal
+        //     };
 
-            if list.is_empty() {
-                continue;
-            }
+        //     if list.is_empty() {
+        //         continue;
+        //     }
 
-            let p = letter.probability();
+        //     let p = letter.probability();
 
-            let c = if rng.gen_bool(p) {
-                let len = list.len();
-                let index = rng.gen_range(0..len);
-                list[index]
-            } else {
-                continue;
-            };
+        //     let c = if rng.gen_bool(p) {
+        //         let len = list.len();
+        //         let index = rng.gen_range(0..len);
+        //         list[index]
+        //     } else {
+        //         continue;
+        //     };
 
-            syl.insert(syl.len(), c);
+        //     syl.insert(syl.len(), c);
+        // }
+
+        // syl
+
+        let mut gen = SyllableGenerator::new(
+            self.clone(),
+            consonants.to_vec(),
+            vowels.to_vec(),
+            nasal.to_vec(),
+        );
+
+        while !gen.is_collapsed() {
+            // eprintln!("{:#?}", gen);
+            gen.iterate();
         }
 
-        syl
+        gen.extract()
     }
 }
 
@@ -229,8 +436,6 @@ struct Generator {
 impl Generator {
     pub fn generate(&self) -> Vec<Word> {
         let mut words: Vec<Word> = Vec::new();
-        let mut rng: ThreadRng = thread_rng();
-
         for _ in 0..self.count {
             let mut word: Word = Word::new();
             for _ in 0..self.syllables {
@@ -238,7 +443,7 @@ impl Generator {
                     "{}{}",
                     word,
                     self.order
-                        .generate(&mut rng, &self.consonants, &self.vowels, &self.nasal)
+                        .generate(&self.consonants, &self.vowels, &self.nasal)
                 );
             }
 
