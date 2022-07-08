@@ -34,25 +34,31 @@ impl SyllableOrder {
 enum SyllableLetter {
     Consonant(u8),
     Vowel(u8),
+    Nasal(u8),
 }
 
 impl SyllableLetter {
     pub fn is_consonant(self) -> bool {
-        match self {
-            SyllableLetter::Consonant(_) => true,
-            SyllableLetter::Vowel(_) => false,
-        }
+        matches!(self, SyllableLetter::Consonant(_))
+    }
+
+    pub fn is_vowel(self) -> bool {
+        matches!(self, SyllableLetter::Vowel(_))
     }
 
     pub fn probability(self) -> f64 {
         match self {
-            SyllableLetter::Consonant(f) | SyllableLetter::Vowel(f) => f64::from(f) / 100.0,
+            SyllableLetter::Consonant(f) | SyllableLetter::Vowel(f) | SyllableLetter::Nasal(f) => {
+                f64::from(f) / 100.0
+            }
         }
     }
 
     pub fn change_probability(&mut self, p: u8) -> Self {
         match self {
-            SyllableLetter::Consonant(f) | SyllableLetter::Vowel(f) => *f = p,
+            SyllableLetter::Consonant(f) | SyllableLetter::Vowel(f) | SyllableLetter::Nasal(f) => {
+                *f = p
+            }
         }
         *self
     }
@@ -64,15 +70,22 @@ impl SyllableOrder {
         rng: &mut ThreadRng,
         consonants: &[Consonant],
         vowels: &[Vowel],
+        nasal: &[char],
     ) -> Syllable {
         let mut syl = Syllable::new();
 
         for letter in &self.0 {
             let list = if letter.is_consonant() {
                 consonants
-            } else {
+            } else if letter.is_vowel() {
                 vowels
+            } else {
+                nasal
             };
+
+            if list.is_empty() {
+                continue;
+            }
 
             let p = letter.probability();
 
@@ -100,6 +113,12 @@ impl FromStr for SyllableOrder {
         let len = chars.len();
 
         let find_right = |chars: &[char], current: usize, find: char| -> Result<usize, Self::Err> {
+            // if let Some(c) = chars.last() {
+            //     if *c == find {
+            //         return Ok(chars.len()-1);
+            //     }
+            // }
+
             for (i, c) in chars.iter().skip(current).enumerate() {
                 if *c == find {
                     return Ok(current + i);
@@ -143,6 +162,7 @@ impl FromStr for SyllableOrder {
                 }
                 'c' | 'C' => order.insert(order.len(), SyllableLetter::Consonant(p)),
                 'v' | 'V' => order.insert(order.len(), SyllableLetter::Vowel(p)),
+                'n' | 'N' => order.insert(order.len(), SyllableLetter::Nasal(p)),
                 _ => {}
             }
         }
@@ -200,6 +220,7 @@ fn so_parse_set_prob() {
 struct Generator {
     pub consonants: Vec<Consonant>,
     pub vowels: Vec<Vowel>,
+    pub nasal: Vec<char>,
     pub order: SyllableOrder,
     pub syllables: u128,
     pub count: u128,
@@ -217,7 +238,7 @@ impl Generator {
                     "{}{}",
                     word,
                     self.order
-                        .generate(&mut rng, &self.consonants, &self.vowels)
+                        .generate(&mut rng, &self.consonants, &self.vowels, &self.nasal)
                 );
             }
 
@@ -251,7 +272,14 @@ fn main() -> Result<(), Error> {
                 .result_arg::<String, [&str; 2]>(["-v", "--vowels"])?
                 .chars()
                 .collect(),
-            order: j.result_arg::<SyllableOrder, [&str; 2]>(["-o", "--order"])?,
+            nasal: j
+                .option_arg::<String, [&str; 2]>(["-n", "--nasals"])
+                .unwrap_or_else(|| "".to_string())
+                .chars()
+                .collect(),
+            order: j
+                .result_arg::<String, [&str; 2]>(["-o", "--order"])?
+                .parse()?,
             syllables: j
                 .option_arg(["-s", "--syllables"])
                 .unwrap_or_else(|| "2".to_string())
