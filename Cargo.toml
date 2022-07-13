@@ -8,3 +8,4 @@ edition = "2018"
 [dependencies]
 rand = "*"
 jargon-args = "0.2.5"
+async-std = "1.12.0"

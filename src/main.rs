@@ -2,10 +2,12 @@
 #![forbid(unstable_features)]
 #![forbid(missing_fragment_specifier)]
 #![warn(clippy::all, clippy::pedantic)]
+use async_std::task;
 use rand::rngs::ThreadRng;
 use rand::Rng;
 use std::io::Write;
 use std::str::FromStr;
+use std::time::Instant;
 
 type Word = String;
 type Consonant = char;
@@ -24,7 +26,6 @@ struct SyllableGenerator {
     vowels: Vec<Vowel>,
     nasal: Vec<char>,
     syllable: Vec<LetterGenerator>,
-    rng: ThreadRng,
     seeded: bool,
     index: usize,
 }
@@ -36,29 +37,25 @@ impl SyllableGenerator {
         vowels: Vec<Vowel>,
         nasal: Vec<char>,
     ) -> SyllableGenerator {
-        let rng = rand::thread_rng();
-
         Self {
             order,
             consonants,
             vowels,
             nasal,
             syllable: Vec::new(),
-            rng,
             seeded: false,
             index: 0,
         }
     }
 
-    pub fn iterate(&mut self) {
+    pub async fn iterate(&mut self, rng: &mut ThreadRng) {
         if self.syllable.is_empty() {
-            self.create_syllable();
+            self.create_syllable(rng).await;
         }
 
-        self.seed();
+        self.seed(rng).await;
 
         if self.is_collapsed() {
-            // eprintln!("syllable iteration:\n{}", self.extract());
             return;
         }
 
@@ -67,17 +64,16 @@ impl SyllableGenerator {
         }
 
         self.syllable[self.index].select(
-            &mut self.rng,
+            rng,
             &self.consonants,
             &self.vowels,
             &self.nasal,
-        );
+        ).await;
 
         self.index += 1;
-        // eprintln!("syllable iteration:\n{}", self.extract());
     }
 
-    fn list(&self) -> Vec<char> {
+    async fn list(&self) -> Vec<char> {
         let mut list = Vec::new();
 
         list.append(&mut self.consonants.clone());
@@ -87,7 +83,7 @@ impl SyllableGenerator {
         list
     }
 
-    pub fn extract(&mut self) -> Syllable {
+    pub async fn extract(&mut self) -> Syllable {
         let mut chars: Vec<char> = Vec::new();
 
         for letter in &self.syllable {
@@ -98,25 +94,25 @@ impl SyllableGenerator {
         chars.iter().collect()
     }
 
-    fn seed(&mut self) {
+    async fn seed(&mut self, rng: &mut ThreadRng) {
         if self.seeded {
             return;
         }
 
-        if let Some(start) = self.get_random_uncollapsed() {
-            self.syllable[start].select(&mut self.rng, &self.consonants, &self.vowels, &self.nasal);
+        if let Some(start) = self.get_random_uncollapsed(rng).await {
+            self.syllable[start].select(rng, &self.consonants, &self.vowels, &self.nasal).await;
             self.seeded = true;
         }
     }
 
-    fn get_random_uncollapsed(&mut self) -> Option<usize> {
+    async fn get_random_uncollapsed(&mut self, rng: &mut ThreadRng) -> Option<usize> {
         if self.is_collapsed() {
             return None;
         }
 
         let len = self.syllable.len();
         loop {
-            let index = self.rng.gen_range(0..len);
+            let index = rng.gen_range(0..len);
 
             if self.syllable[index].is_collapsed() {
                 continue;
@@ -126,12 +122,12 @@ impl SyllableGenerator {
         }
     }
 
-    fn create_syllable(&mut self) {
+    async fn create_syllable(&mut self, rng: &mut ThreadRng) {
         let mut syl: Vec<LetterGenerator> = Vec::new();
 
         for s in &self.order.0 {
-            if self.rng.gen_bool(s.probability()) {
-                syl.insert(syl.len(), LetterGenerator::new(*s, self.list()));
+            if rng.gen_bool(s.probability()) {
+                syl.insert(syl.len(), LetterGenerator::new(*s, self.list().await));
             }
         }
 
@@ -167,7 +163,7 @@ impl LetterGenerator {
         }
     }
 
-    fn prune(&mut self, list: &[char]) {
+    async fn prune(&mut self, list: &[char]) {
         self.possible = self
             .possible
             .iter()
@@ -176,7 +172,7 @@ impl LetterGenerator {
         self.pruned = true;
     }
 
-    pub fn select(
+    pub async fn select(
         &mut self,
         rng: &mut ThreadRng,
         consonants: &[Consonant],
@@ -193,7 +189,7 @@ impl LetterGenerator {
                 SyllableLetter::Vowel(_) => vowels,
                 SyllableLetter::Nasal(_) => nasal,
             };
-            self.prune(proper_list);
+            self.prune(proper_list).await;
         }
     }
 
@@ -202,7 +198,10 @@ impl LetterGenerator {
     }
 
     pub fn entropy(&self) -> usize {
-        self.possible.len() - 1
+        if self.possible.len() == 0 {
+            panic!("possible outcomes cannot be 0");
+        }
+        (self.possible.len()).checked_sub(1).unwrap_or(0)
     }
 
     pub fn is_collapsed(&self) -> bool {
@@ -250,43 +249,15 @@ impl SyllableLetter {
 }
 
 impl SyllableOrder {
-    pub fn generate(
+    // #[async_recursion]
+    pub async fn generate(
         &self,
         // rng: &mut ThreadRng,
         consonants: &[Consonant],
         vowels: &[Vowel],
         nasal: &[char],
-    ) -> Syllable {
-        // let mut syl = Syllable::new();
-
-        // for letter in &self.0 {
-        //     let list = if letter.is_consonant() {
-        //         consonants
-        //     } else if letter.is_vowel() {
-        //         vowels
-        //     } else {
-        //         nasal
-        //     };
-
-        //     if list.is_empty() {
-        //         continue;
-        //     }
-
-        //     let p = letter.probability();
-
-        //     let c = if rng.gen_bool(p) {
-        //         let len = list.len();
-        //         let index = rng.gen_range(0..len);
-        //         list[index]
-        //     } else {
-        //         continue;
-        //     };
-
-        //     syl.insert(syl.len(), c);
-        // }
-
-        // syl
-
+    ) -> Option<String> {
+        let mut rng = rand::thread_rng();
         let mut gen = SyllableGenerator::new(
             self.clone(),
             consonants.to_vec(),
@@ -295,11 +266,16 @@ impl SyllableOrder {
         );
 
         while !gen.is_collapsed() {
-            // eprintln!("{:#?}", gen);
-            gen.iterate();
+            gen.iterate(&mut rng).await;
         }
 
-        gen.extract()
+        let output = gen.extract().await.trim().to_string();
+
+        if output.is_empty() {
+            None
+        } else {
+            Some(output)
+        }
     }
 }
 
@@ -312,12 +288,6 @@ impl FromStr for SyllableOrder {
         let len = chars.len();
 
         let find_right = |chars: &[char], current: usize, find: char| -> Result<usize, Self::Err> {
-            // if let Some(c) = chars.last() {
-            //     if *c == find {
-            //         return Ok(chars.len()-1);
-            //     }
-            // }
-
             for (i, c) in chars.iter().skip(current).enumerate() {
                 if *c == find {
                     return Ok(current + i);
@@ -421,32 +391,61 @@ struct Generator {
     pub vowels: Vec<Vowel>,
     pub nasal: Vec<char>,
     pub order: SyllableOrder,
-    pub syllables: u128,
-    pub count: u128,
+    pub syllables: Option<usize>,
+    pub count: usize,
+    sort: bool,
 }
 
 impl Generator {
-    pub fn generate(&self) -> Vec<Word> {
-        let mut words: Vec<Word> = Vec::new();
-        for _ in 0..self.count {
+    pub async fn generate(&self) -> Vec<Word> {
+        if !self.verify() {
+            return vec![];
+        }
+        let mut words: Vec<Word> = Vec::with_capacity(self.count);
+        let mut i = words.len();
+        let now = Instant::now();
+        while i < self.count {
             let mut word: Word = Word::new();
-            for _ in 0..self.syllables {
-                word = format!(
-                    "{}{}",
-                    word,
-                    self.order
-                        .generate(&self.consonants, &self.vowels, &self.nasal)
-                );
+            let syl = self.syllables.unwrap_or_else(|| rand::random::<usize>() % 4);
+            let mut runs = 0;
+            while runs < syl {
+                match self.order.generate(&self.consonants, &self.vowels, &self.nasal).await {
+                    Some(syllable) => word = format!("{}{}", word, syllable),
+                    None => continue,
+                }
+                runs += 1;
             }
-
-            if !words.contains(&word) {
+            word = word.trim().to_owned();
+            if !words.contains(&word) && !word.is_empty() {
                 words.insert(words.len(), word);
             }
 
-            words.sort();
+            if self.sort {
+                words.sort();
+            }
+
+            if now.elapsed().as_secs_f32() / 50.0 >= 1.0 {
+                return words;
+            }
+
+            i = words.len();
         }
 
         words
+    }
+
+    fn verify(&self) -> bool {
+        for l in &self.order.0 {
+            let b = match l {
+                SyllableLetter::Consonant(_) => self.consonants.len() > 1,
+                SyllableLetter::Vowel(_) => self.vowels.len() > 1,
+                SyllableLetter::Nasal(_) => self.nasal.len() > 1,
+            };
+
+            if !b { return b }
+        }
+
+        true
     }
 }
 
@@ -459,7 +458,6 @@ fn main() -> Result<(), Error> {
     } else if j.contains(["-V", "--version"]) {
         version();
     } else {
-        let moment = std::time::Instant::now();
         let gen: Generator = Generator {
             consonants: j
                 .result_arg::<String, [&str; 2]>(["-c", "--consonants"])?
@@ -478,24 +476,25 @@ fn main() -> Result<(), Error> {
                 .result_arg::<String, [&str; 2]>(["-o", "--order"])?
                 .parse()?,
             syllables: j
-                .option_arg(["-s", "--syllables"])
-                .unwrap_or_else(|| "2".to_string())
-                .parse()?,
+                .option_arg::<usize, [&str; 2]>(["-s", "--syllables"]),
             count: j
                 .option_arg(["-C", "--count"])
                 .unwrap_or_else(|| "4".to_string())
                 .parse()?,
+            sort: j.contains(["-S", "--sort"]),
         };
 
-        let words = gen.generate();
-
+        let moment = std::time::Instant::now();
+        let words = task::block_on(gen.generate());
+        let now = moment.elapsed().as_millis();
+        let count = words.len();
         let mut oup = std::io::stdout();
         for word in words {
             oup.write_all(format!("{}\n", word).as_bytes())?;
         }
         oup.flush()?;
 
-        eprintln!("took {} millisecond(s)", moment.elapsed().as_millis());
+        eprintln!("made {} in {} millisecond(s)", count, now);
     }
 
     Ok(())
