@@ -1,0 +1,4 @@
+Consonants = ['d', 'l', 'w', 'r', 'y', 'b', 'n', 'm']
+Vowels = ['a', 'e', 'o', 'u', 'ê']
+Nasals = ['n', 'm']
+Order = "cv(n,10)"

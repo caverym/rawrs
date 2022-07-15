@@ -5,13 +5,17 @@
 use async_std::task;
 use rand::rngs::ThreadRng;
 use rand::Rng;
-use std::io::Write;
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::time::Instant;
 
+// mod file;
+
 type Word = String;
-type Consonant = char;
-type Vowel = char;
+type Consonant = String;
+type Vowel = String;
 type Syllable = String;
 
 #[derive(Debug)]
@@ -24,7 +28,7 @@ struct SyllableGenerator {
     order: SyllableOrder,
     consonants: Vec<Consonant>,
     vowels: Vec<Vowel>,
-    nasal: Vec<char>,
+    nasal: Vec<String>,
     syllable: Vec<LetterGenerator>,
     seeded: bool,
     index: usize,
@@ -35,7 +39,7 @@ impl SyllableGenerator {
         order: SyllableOrder,
         consonants: Vec<Consonant>,
         vowels: Vec<Vowel>,
-        nasal: Vec<char>,
+        nasal: Vec<String>,
     ) -> SyllableGenerator {
         Self {
             order,
@@ -63,17 +67,14 @@ impl SyllableGenerator {
             self.index = 0;
         }
 
-        self.syllable[self.index].select(
-            rng,
-            &self.consonants,
-            &self.vowels,
-            &self.nasal,
-        ).await;
+        self.syllable[self.index]
+            .select(rng, &self.consonants, &self.vowels, &self.nasal)
+            .await;
 
         self.index += 1;
     }
 
-    async fn list(&self) -> Vec<char> {
+    async fn list(&self) -> Vec<String> {
         let mut list = Vec::new();
 
         list.append(&mut self.consonants.clone());
@@ -84,14 +85,14 @@ impl SyllableGenerator {
     }
 
     pub async fn extract(&mut self) -> Syllable {
-        let mut chars: Vec<char> = Vec::new();
+        let mut chars: Vec<String> = Vec::new();
 
         for letter in &self.syllable {
             let mut letters = letter.get_letters();
             chars.append(&mut letters);
         }
 
-        chars.iter().collect()
+        chars.iter().map(|c| c.to_string()).collect()
     }
 
     async fn seed(&mut self, rng: &mut ThreadRng) {
@@ -100,7 +101,9 @@ impl SyllableGenerator {
         }
 
         if let Some(start) = self.get_random_uncollapsed(rng).await {
-            self.syllable[start].select(rng, &self.consonants, &self.vowels, &self.nasal).await;
+            self.syllable[start]
+                .select(rng, &self.consonants, &self.vowels, &self.nasal)
+                .await;
             self.seeded = true;
         }
     }
@@ -150,12 +153,12 @@ impl SyllableGenerator {
 #[derive(Debug)]
 struct LetterGenerator {
     kind: SyllableLetter,
-    possible: Vec<char>,
+    possible: Vec<String>,
     pruned: bool,
 }
 
 impl LetterGenerator {
-    pub fn new(kind: SyllableLetter, list: Vec<char>) -> Self {
+    pub fn new(kind: SyllableLetter, list: Vec<String>) -> Self {
         Self {
             kind,
             possible: list,
@@ -163,11 +166,17 @@ impl LetterGenerator {
         }
     }
 
-    async fn prune(&mut self, list: &[char]) {
+    async fn prune(&mut self, list: &[String]) {
         self.possible = self
             .possible
             .iter()
-            .filter_map(|c| if list.contains(c) { Some(*c) } else { None })
+            .filter_map(|c| {
+                if list.contains(c) {
+                    Some(c.to_owned())
+                } else {
+                    None
+                }
+            })
             .collect();
         self.pruned = true;
     }
@@ -177,11 +186,11 @@ impl LetterGenerator {
         rng: &mut ThreadRng,
         consonants: &[Consonant],
         vowels: &[Vowel],
-        nasal: &[char],
+        nasal: &[String],
     ) {
         if self.pruned {
             let index = rng.gen_range(0..=self.entropy());
-            let item = self.possible[index];
+            let item = self.possible[index].clone();
             self.possible = vec![item];
         } else {
             let proper_list = match self.kind {
@@ -193,7 +202,7 @@ impl LetterGenerator {
         }
     }
 
-    pub fn get_letters(&self) -> Vec<char> {
+    pub fn get_letters(&self) -> Vec<String> {
         self.possible.clone()
     }
 
@@ -209,7 +218,7 @@ impl LetterGenerator {
     }
 }
 
-#[derive(Default, Debug, Clone, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, serde::Deserialize)]
 struct SyllableOrder(pub Vec<SyllableLetter>);
 
 impl SyllableOrder {
@@ -222,7 +231,7 @@ impl SyllableOrder {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
 enum SyllableLetter {
     Consonant(u8),
     Vowel(u8),
@@ -255,7 +264,7 @@ impl SyllableOrder {
         // rng: &mut ThreadRng,
         consonants: &[Consonant],
         vowels: &[Vowel],
-        nasal: &[char],
+        nasal: &[String],
     ) -> Option<String> {
         let mut rng = rand::thread_rng();
         let mut gen = SyllableGenerator::new(
@@ -389,7 +398,7 @@ fn so_parse_set_prob() {
 struct Generator {
     pub consonants: Vec<Consonant>,
     pub vowels: Vec<Vowel>,
-    pub nasal: Vec<char>,
+    pub nasal: Vec<String>,
     pub order: SyllableOrder,
     pub syllables: Option<usize>,
     pub count: usize,
@@ -406,10 +415,16 @@ impl Generator {
         let now = Instant::now();
         while i < self.count {
             let mut word: Word = Word::new();
-            let syl = self.syllables.unwrap_or_else(|| rand::random::<usize>() % 4);
+            let syl = self
+                .syllables
+                .unwrap_or_else(|| rand::random::<usize>() % 4);
             let mut runs = 0;
             while runs < syl {
-                match self.order.generate(&self.consonants, &self.vowels, &self.nasal).await {
+                match self
+                    .order
+                    .generate(&self.consonants, &self.vowels, &self.nasal)
+                    .await
+                {
                     Some(syllable) => word = format!("{}{}", word, syllable),
                     None => continue,
                 }
@@ -442,7 +457,9 @@ impl Generator {
                 SyllableLetter::Nasal(_) => self.nasal.len() > 1,
             };
 
-            if !b { return b }
+            if !b {
+                return b;
+            }
         }
 
         true
@@ -457,26 +474,67 @@ fn main() -> Result<(), Error> {
         help();
     } else if j.contains(["-V", "--version"]) {
         version();
+    } else if let Some(file) = j.option_arg::<PathBuf, [&str; 2]>(["-f", "--file"]) {
+        let mut file = File::open(file)?;
+        let mut buf: String = String::new();
+        file.read_to_string(&mut buf)?;
+
+        #[derive(Debug, serde::Deserialize)]
+        struct Tmp {
+            Consonants: Vec<String>,
+            Vowels: Vec<String>,
+            Nasals: Vec<String>,
+            Order: String,
+        };
+
+        let t: Tmp = toml::from_str(&buf)?;
+
+        let gen: Generator = Generator {
+            consonants: t.Consonants,
+            vowels: t.Vowels,
+            nasal: t.Nasals,
+            order: t.Order.parse()?,
+            syllables: j.option_arg::<usize, [&str; 2]>(["-s", "--syllables"]),
+            count: j
+                .option_arg(["-C", "--count"])
+                .unwrap_or_else(|| "4".to_string())
+                .parse()?,
+            sort: j.contains(["-S", "--sort"]),
+        };
+
+        let moment = std::time::Instant::now();
+        let words = task::block_on(gen.generate());
+        let now = moment.elapsed().as_millis();
+        let count = words.len();
+        let mut oup = std::io::stdout();
+        for word in words {
+            oup.write_all(format!("{}\n", word).as_bytes())?;
+        }
+        oup.flush()?;
+
+        eprintln!("made {} in {} millisecond(s)", count, now);
     } else {
         let gen: Generator = Generator {
             consonants: j
                 .result_arg::<String, [&str; 2]>(["-c", "--consonants"])?
                 .chars()
+                .map(|s| s.to_string())
                 .collect(),
             vowels: j
                 .result_arg::<String, [&str; 2]>(["-v", "--vowels"])?
                 .chars()
+                .map(|s| s.to_string())
                 .collect(),
             nasal: j
                 .option_arg::<String, [&str; 2]>(["-n", "--nasals"])
                 .unwrap_or_else(|| "".to_string())
                 .chars()
+                .map(|s| s.to_string())
                 .collect(),
             order: j
                 .result_arg::<String, [&str; 2]>(["-o", "--order"])?
                 .parse()?,
-            syllables: j
-                .option_arg::<usize, [&str; 2]>(["-s", "--syllables"]),
+            syllables: j.option_arg::<usize, [&str; 2]>(["-s", "--syllables"]),
             count: j
                 .option_arg(["-C", "--count"])
                 .unwrap_or_else(|| "4".to_string())
